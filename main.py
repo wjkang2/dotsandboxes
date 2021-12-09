@@ -8,7 +8,7 @@
 from tkinter import *
 import numpy as np
 
-number_of_dots = 6
+number_of_dots = 4
 size_of_board = number_of_dots * 100
 symbol_size = (size_of_board / 3 - size_of_board / 8) / 2
 symbol_thickness = 50
@@ -33,11 +33,15 @@ class Dots_and_Boxes():
         self.canvas.pack()
         self.window.bind('<Button-1>', self.click)
         self.player1_starts = True
+        self.player1_boxes = 0
+        self.player2_boxes = 0
         self.refresh_board()
         self.play_again()
 
     def play_again(self):
         self.refresh_board()
+        self.player1_boxes = 0
+        self.player2_boxes = 0
         self.board_status = np.zeros(shape=(number_of_dots - 1, number_of_dots - 1))
         self.last_played = np.ones(shape=(number_of_dots - 1, number_of_dots - 1), dtype=bool)
         self.row_status = np.zeros(shape=(number_of_dots, number_of_dots - 1))
@@ -100,12 +104,38 @@ class Dots_and_Boxes():
                 self.already_marked_boxes.append(list(box))
                 # print("Box 1: " + str(box[0]) + "; Box 2: " + str(box[1]) + "; Val: " + str(self.last_played[box[0]][box[1]]))
                 if self.last_played[box[0]][box[1]] == True:
+                    self.player1_boxes += 1
                     color = player1_color_light
                 else:
+                    self.player2_boxes += 1
                     color = player2_color_light
                 self.shade_box(box, color)
                 changed = True
         if changed:
+            self.player1_turn = not self.player1_turn
+    
+    def temp_box(self):
+        boxes = np.argwhere(self.board_status == 4)
+        changed = False
+        for box in boxes:
+            if list(box) not in self.already_marked_boxes and list(box) !=[]:
+                self.already_marked_boxes.append(list(box))
+                # print("Box 1: " + str(box[0]) + "; Box 2: " + str(box[1]) + "; Val: " + str(self.last_played[box[0]][box[1]]))
+                if self.last_played[box[0]][box[1]] == True:
+                    self.player1_boxes += 1
+                else:
+                    self.player2_boxes += 1
+                changed = True
+        if changed:
+            self.player1_turn = not self.player1_turn
+    
+    def untemp_box(self):
+        box = self.already_marked_boxes.pop()
+        if self.last_played[box[0]][box[1]] == True:
+            self.player1_boxes -= 1
+        else:
+            self.player2_boxes -= 1
+        if self.last_played[self.already_marked_boxes[-1][0]][self.already_marked_boxes[-1][1]] != self.last_played[box[0]][box[1]]:
             self.player1_turn = not self.player1_turn
 
     def update_board(self, type, logical_position):
@@ -144,6 +174,42 @@ class Dots_and_Boxes():
                 self.last_played[c][r] = self.player1_turn
         # print(self.player1_turn)
 
+    def unupdate_board(self, type, logical_position):
+        r = logical_position[0]
+        c = logical_position[1]
+
+        # print("r-value: " + str(r) + "; c-value: " + str(c) + "; type: " + type)
+        
+
+        if c < (number_of_dots-1) and r < (number_of_dots-1):
+            self.board_status[c][r] -= 1
+            
+
+        if type == 'row':
+            self.row_status[c][r] = 0
+            if c >= 1:
+                self.board_status[c-1][r] -= 1
+                self.last_played[c-1][r] = self.player1_turn
+                # mark to bottom if not on border
+                if c < (number_of_dots-1):
+                    self.last_played[c][r] = self.player1_turn
+            # logic if top-most row marker
+            else:
+                self.last_played[c][r] = self.player1_turn
+
+        elif type == 'col':
+            self.col_status[c][r] = 0
+            if r >= 1:
+                self.board_status[c][r-1] -= 1
+                self.last_played[c][r-1] = self.player1_turn
+                # mark to right if not on border
+                if r < (number_of_dots-1):
+                    self.last_played[c][r] = self.player1_turn
+            # logic if left-most column marker
+            else:
+                self.last_played[c][r] = self.player1_turn
+        # print(self.player1_turn)
+
     def is_gameover(self):
         return (self.row_status == 1).all() and (self.col_status == 1).all()
 
@@ -172,8 +238,8 @@ class Dots_and_Boxes():
         self.canvas.create_line(start_x, start_y, end_x, end_y, fill=color, width=edge_width)
 
     def display_gameover(self):
-        player1_score = len(np.argwhere(self.board_status == -4))
-        player2_score = len(np.argwhere(self.board_status == 4))
+        player1_score = self.player1_boxes
+        player2_score = self.player2_boxes
 
         if player1_score > player2_score:
             # Player 1 wins
@@ -273,11 +339,129 @@ class Dots_and_Boxes():
                     # self.canvas.delete("all")
                     self.display_gameover()
                 else:
+                    self.max(8)
                     self.display_turn_text()
         else:
             self.canvas.delete("all")
             self.play_again()
             self.reset_board = False
+
+    def max(self):
+        if self.is_gameover():
+            if self.player1_boxes > self.player2_boxes:
+                return (-1,"none",[0,0])
+            elif self.player1_boxes < self.player2_boxes:
+                return (1,"none",[0,0])
+            else:
+                return (0,"none",[0,0])
+
+        maximum_score = -1000
+
+        px = 0
+        py = 0
+        type = "none"
+        coords = [px,py]
+
+        curr_turn = self.player1_turn
+
+        for i in range(0,len(self.row_status)):
+            for j in range(0, len(self.row_status[0])):
+                if self.row_status[i][j] == 0:
+                    type = 'row'
+                    self.update_board(type,[i,j])
+                    self.temp_box()
+                    if curr_turn == self.player1_turn:
+                        (maximum_score, type, coords) = self.max()
+                    else:
+                        (m, type2, coords2) = self.min()
+                        if m > maximum_score:
+                            maximum_score = m
+                            px = i
+                            py = j
+                            type = type2
+                            coords = [px,py]
+                    self.unupdate_board(type,[i,j])
+                    self.untemp_box()
+        
+        for i in range(0,len(self.col_status)):
+            for j in range(0, len(self.col_status[0])):
+                if self.col_status[i][j] == 0:
+                    type = 'col'
+                    self.update_board(type,[i,j])
+                    self.temp_box()
+                    if curr_turn == self.player1_turn:
+                        (maximum_score, type, coords) = self.max()
+                    else:
+                        (m, type2, coords2) = self.min()
+                        if m > maximum_score:
+                            maximum_score = m
+                            px = i
+                            py = j
+                            type = type2
+                            coords = [px,py]
+                    self.unupdate_board(type,[i,j])
+                    self.untemp_box()
+
+        return (maximum_score, type, coords)
+
+    def min(self):
+        if self.is_gameover():
+            if self.player1_boxes > self.player2_boxes:
+                return (-1,"none",[0,0])
+            elif self.player1_boxes < self.player2_boxes:
+                return (1,"none",[0,0])
+            else:
+                return (0,"none",[0,0])
+
+        minimum_score = 1000
+
+        px = 0
+        py = 0
+        type = "none"
+        coords = [px,py]
+
+        curr_turn = self.player1_turn
+
+        for i in range(0,len(self.row_status)):
+            for j in range(0, len(self.row_status[0])):
+                if self.row_status[i][j] == 0:
+                    type = 'row'
+                    self.update_board(type,[i,j])
+                    self.temp_box()
+                    if curr_turn == self.player1_turn:
+                        (minimum_score, type, coords) = self.max()
+                    else:
+                        (m, type2, coords2) = self.min()
+                        if m > minimum_score:
+                            minimum_score = m
+                            px = i
+                            py = j
+                            type = type2
+                            coords = [px,py]
+                    self.unupdate_board(type,[i,j])
+                    self.untemp_box()
+        
+        for i in range(0,len(self.col_status)):
+            for j in range(0, len(self.col_status[0])):
+                if self.col_status[i][j] == 0:
+                    type = 'col'
+                    self.update_board(type,[i,j])
+                    self.temp_box()
+                    if curr_turn == self.player1_turn:
+                        (minimum_score, type, coords) = self.max()
+                    else:
+                        (m, type2, coords2) = self.min()
+                        if m < minimum_score:
+                            minimum_score = m
+                            px = i
+                            py = j
+                            type = type2
+                            coords = [px,py]
+                    self.unupdate_board(type,[i,j])
+                    self.untemp_box()
+
+        return (minimum_score, type, coords)
+
 
 
 game_instance = Dots_and_Boxes()
