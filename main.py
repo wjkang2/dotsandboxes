@@ -140,10 +140,12 @@ class Dots_and_Boxes():
     # only difference is it only pops one box instead of all of the marked ones
     def untemp_box(self):
         box = self.already_marked_boxes.pop()
+        # print(box)
         if self.last_played[box[0]][box[1]] == True:
             self.player1_boxes -= 1
         else:
             self.player2_boxes -= 1
+        # print(self.already_marked_boxes)
         if self.last_played[self.already_marked_boxes[-1][0]][self.already_marked_boxes[-1][1]] != self.last_played[box[0]][box[1]]:
             self.player1_turn = not self.player1_turn
 
@@ -334,12 +336,15 @@ class Dots_and_Boxes():
                                                        font="cmr 15 bold",text=text, fill=color)
 
     def click(self, event):
-        if not self.reset_board:
+        if not self.reset_board and self.player1_turn:
+            print("if")
             grid_position = [event.x, event.y]
-            logical_positon, valid_input = self.convert_grid_to_logical_position(grid_position)
-            if valid_input and not self.is_grid_occupied(logical_positon, valid_input):
-                self.update_board(valid_input, logical_positon)
-                self.make_edge(valid_input, logical_positon)
+            logical_position, valid_input = self.convert_grid_to_logical_position(grid_position)
+            print("Type: " + valid_input + ", Coords: " + str(logical_position))
+            print(not self.is_grid_occupied(logical_position, valid_input))
+            if valid_input and not self.is_grid_occupied(logical_position, valid_input):
+                self.update_board(valid_input, logical_position)
+                self.make_edge(valid_input, logical_position)
                 self.mark_box()
                 self.refresh_board()
                 self.player1_turn = not self.player1_turn
@@ -348,17 +353,46 @@ class Dots_and_Boxes():
                     # self.canvas.delete("all")
                     self.display_gameover()
                 else:
-                    self.max(8)
+                    self.display_turn_text()
+        elif not self.reset_board and not self.player1_turn:
+            print("else")
+            move = self.minmax()
+            print("Type: " + move[0] + ", Coords: " + str(move[1]))
+            print(not self.is_grid_occupied(move[1], move[0]))
+            if move[0] != "none" and not self.is_grid_occupied(move[1], move[0]):
+                print("I'm here!")
+                # AI moves
+                self.update_board(move[0], move[1])
+                self.make_edge(move[0], move[1])
+                self.mark_box()
+                self.refresh_board()
+                self.player1_turn = not self.player1_turn
+
+                if self.is_gameover():
+                    self.display_gameover()
+                else:
                     self.display_turn_text()
         else:
+            print("Goodbye")
             self.canvas.delete("all")
             self.play_again()
             self.reset_board = False
 
-    def max(self):
+    def minmax(self):
+        minimum_Score = 1000
+        pop = [0,0]
+        # 3 is the depth, can increase
+        result = self.max(3, minimum_Score)
+        if minimum_Score > result[0]:
+            minimum_Score = result[0]
+            pop = result[2]
+
+        return (result[1], pop)
+
+    def max(self, depth, alpha):
         # meant to change these values to something different but forgot
-        if self.is_gameover():
-            return (self.player1_boxes - self.player2_boxes,"none",[0,0])
+        if self.is_gameover() or depth == 0:
+            return (self.player1_boxes - self.player2_boxes,"none",[-1,-1])
 
         maximum_score = -1000
 
@@ -370,18 +404,23 @@ class Dots_and_Boxes():
         curr_turn = self.player1_turn
 
         # checks all moves for rows
-        for i in range(0,len(self.row_status)):
-            for j in range(0, len(self.row_status[0])):
-                if self.row_status[i][j] == 0:
+        for i in range(0,len(self.row_status)-2):
+            for j in range(0, len(self.row_status[0]-1)):
+                # print("update i: " + str(i) + ", j: " + str(j))
+                if not self.is_grid_occupied([i,j], "row"):
                     typer = 'row'
                     # moves board state forward to check other potential states
                     self.update_board(typer,[i,j])
                     num_updated = self.temp_box()
 
                     if curr_turn == self.player1_turn:
-                        (maximum_score, type, coords) = self.max()
+                        (maximum_score, type, coords) = self.max(depth - 1, alpha)
+                        if type == "none":
+                            type = "row"
+                        if coords == [-1,-1]:
+                            coords = [i, j]
                     else:
-                        (m, type2, coords2) = self.min()
+                        (m, type2, coords2) = self.min(depth - 1, maximum_score)
                         if m > maximum_score:
                             maximum_score = m
                             px = i
@@ -389,23 +428,28 @@ class Dots_and_Boxes():
                             type = type2
                             coords = [px,py]
                     # resets board back to current state
+                    # print("unupdate i: " + str(i) + ", j: " + str(j))
                     self.unupdate_board(typer,[i,j])
-                    for i in range(0,num_updated):
+                    for k in range(0,num_updated-1):
                         self.untemp_box()
         
         # checks all moves for columns
-        for i in range(0,len(self.col_status)):
-            for j in range(0, len(self.col_status[0])):
-                if self.col_status[i][j] == 0:
+        for i in range(0,len(self.col_status)-1):
+            for j in range(0, len(self.col_status[0])-2):
+                if not self.is_grid_occupied([i,j], "col"):
                     typec = 'col'
                     # moves board state forward to check other potential states
                     self.update_board(typec,[i,j])
                     num_updated = self.temp_box()
 
                     if curr_turn == self.player1_turn:
-                        (maximum_score, type, coords) = self.max()
+                        (maximum_score, type, coords) = self.max(depth - 1, alpha)
+                        if type == "none":
+                            type = "col"
+                        if coords == [-1,-1]:
+                            coords = [i, j]
                     else:
-                        (m, type2, coords2) = self.min()
+                        (m, type2, coords2) = self.min(depth - 1, maximum_score)
                         if m > maximum_score:
                             maximum_score = m
                             px = i
@@ -414,14 +458,14 @@ class Dots_and_Boxes():
                             coords = [px,py]
                     # resets board back to current state
                     self.unupdate_board(typec,[i,j])
-                    for i in range(0,num_updated):
+                    for k in range(0,num_updated-1):
                         self.untemp_box()
 
         return (maximum_score, type, coords)
 
-    def min(self):
+    def min(self, depth, beta):
         # also meant to change these values to something different but forgot
-        if self.is_gameover():
+        if self.is_gameover() or depth == 0:
             return (self.player1_boxes - self.player2_boxes,"none",[0,0])
         minimum_score = 1000
 
@@ -433,18 +477,22 @@ class Dots_and_Boxes():
         curr_turn = self.player1_turn
 
         # finds min for rows
-        for i in range(0,len(self.row_status)):
-            for j in range(0, len(self.row_status[0])):
-                if self.row_status[i][j] == 0:
+        for i in range(0,len(self.row_status)-2):
+            for j in range(0, len(self.row_status[0])-1):
+                if not self.is_grid_occupied([i,j], "row"):
                     typer = 'row'
                     # moves board state forward to check other potential states
                     self.update_board(type,[i,j])
                     num_updated = self.temp_box()
 
                     if curr_turn == self.player1_turn:
-                        (minimum_score, typer, coords) = self.max()
+                        (minimum_score, typer, coords) = self.min(depth - 1, beta)
+                        if type == "none":
+                            type = "row"
+                        if coords == [-1,-1]:
+                            coords = [i, j]
                     else:
-                        (m, type2, coords2) = self.min()
+                        (m, type2, coords2) = self.max(depth - 1, minimum_score)
                         if m > minimum_score:
                             minimum_score = m
                             px = i
@@ -453,22 +501,26 @@ class Dots_and_Boxes():
                             coords = [px,py]
                     # resets board back to current state
                     self.unupdate_board(typer,[i,j])
-                    for i in range(0,num_updated):
+                    for k in range(0,num_updated-1):
                         self.untemp_box()
         
         # finds max for columns
-        for i in range(0,len(self.col_status)):
-            for j in range(0, len(self.col_status[0])):
-                if self.col_status[i][j] == 0:
+        for i in range(0,len(self.col_status)-1):
+            for j in range(0, len(self.col_status[0])-2):
+                if not self.is_grid_occupied([i,j], "col"):
                     typec = 'col'
                     # moves board state forward to check other potential states
                     self.update_board(typec,[i,j])
                     num_updated = self.temp_box()
 
                     if curr_turn == self.player1_turn:
-                        (minimum_score, type, coords) = self.max()
+                        (minimum_score, type, coords) = self.min(depth - 1, beta)
+                        if type == "none":
+                            type = "col"
+                        if coords == [-1,-1]:
+                            coords = [i, j]
                     else:
-                        (m, type2, coords2) = self.min()
+                        (m, type2, coords2) = self.max(depth - 1, minimum_score)
                         if m < minimum_score:
                             minimum_score = m
                             px = i
@@ -477,7 +529,7 @@ class Dots_and_Boxes():
                             coords = [px,py]
                     # resets board back to current state
                     self.unupdate_board(typec,[i,j])
-                    for i in range(0,num_updated):
+                    for k in range(0,num_updated-1):
                         self.untemp_box()
 
         return (minimum_score, type, coords)
